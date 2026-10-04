@@ -123,7 +123,14 @@ tr.blank td{height:26px}
 /* gallery */
 .gal{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .gal figure{margin:0;border:1px solid #999;padding:4px;background:#fff;box-shadow:2px 2px 0 #ccc}
-.gal svg{width:100%;aspect-ratio:16/11;display:block}
+.gal figure{cursor:zoom-in}
+.gal img{width:100%;aspect-ratio:16/11;object-fit:cover;display:block}
+.win.wide{width:760px}
+.lb{position:relative;overflow:hidden;border:1px solid #888;background:#000}
+.lb img{width:100%;display:block}
+.lbf{position:absolute;aspect-ratio:1/2;opacity:0;transition:opacity .5s;filter:blur(.4px)}
+.lbf.on{opacity:1}
+.lbf svg{width:100%;height:100%;display:block}
 .gal figcaption{font-size:11px;padding-top:3px}
 .gal figcaption span{display:block;color:#999}
 ol.rule{margin:0;padding-left:22px}ol.rule li{margin-bottom:5px}
@@ -347,18 +354,16 @@ const ART = {
 const art = key => SCARE_IMG[key] ? '<img src="' + esc(SCARE_IMG[key]) + '" alt="" style="object-position:' + FOCUS[key] + '">' : ART[key].svg;
 Object.values(SCARE_IMG).forEach(u => { if (u) new Image().src = u; }); // 미리 로드 — 점프스퀘어 순간 지연 방지
 
-/* ---------- 공터 썸네일 (이미지 자리) ---------- */
-function hall(w, f, c, s, dk, fig) {
-  return '<svg viewBox="0 0 160 110" preserveAspectRatio="xMidYMid slice"><rect width="160" height="110" fill="' + w + '"/><polygon points="0,0 160,0 100,40 60,40" fill="' + c + '"/><polygon points="0,110 160,110 100,66 60,66" fill="' + f + '"/><polygon points="160,0 100,40 100,66 160,110" fill="' + s + '"/><rect x="71" y="44" width="18" height="22" fill="' + dk + '"/><rect x="66" y="10" width="28" height="3" fill="#fffbe0"/><rect x="74" y="27" width="12" height="2" fill="#fffbe0"/>' + (fig ? '<rect x="79" y="55" width="2" height="9" fill="#111"/><circle cx="80" cy="54" r="1.3" fill="#111"/>' : '') + '</svg>';
-}
+/* ---------- 공터 사진 (얕은 층) ---------- */
 const GAL = [
-  ['제7호 공터 1층 복도', hall('#d8cf8e', '#b5a066', '#e9e3b8', '#c7bd7c', '#5d5532')],
-  ['제7호 공터 대기실', hall('#cfc7b0', '#8f8a7a', '#e6e1d2', '#bdb59d', '#3b3a33')],
-  ['제3호 공터 계단참', hall('#b9bcbe', '#8c8f91', '#d5d7d8', '#a6a9ab', '#2b2d2e')],
-  ['제7호 공터 지하 1층(추정)', hall('#c2dfe0', '#9cc6c8', '#e3f1f1', '#add2d3', '#38494a', 1)],
-  ['제1호 공터 화장실 앞', hall('#e3d9c6', '#bfb39b', '#f1ebdf', '#d2c7b1', '#4b4434')],
-  ['촬영 위치 불명', hall('#dcd4a2', '#b9ab70', '#ece6c4', '#cbc188', '#000')]
+  ['제3호 공터 — 교실 복도', 'gt1'],
+  ['제7호 공터 — 지하 주차장', 'gt2'],
+  ['제7호 공터 — 사무 구역', 'gt3'],
+  ['제1호 공터 — 실내 수영장', 'gt4'],
+  ['제7호 공터 — 폐점 백화점', 'gt5'],
+  ['촬영 위치 불명 — 객실 복도', 'gt6']
 ];
+const POOL = 3; // 수영장 사진 확대 시 R-158 연출
 
 /* ---------- 데이터 ---------- */
 const STAFF = [ // c: 가운 색 (명함 이미지 기준 추정 — 필요시 수정)
@@ -597,26 +602,41 @@ longPress($('#counter'), doRecall);
 
 /* ---------- 3분 무조작: 젖은 발자국 ---------- */
 const FOOT = '<svg viewBox="0 0 22 44"><g fill="rgba(38,58,70,.5)"><ellipse cx="11" cy="13" rx="8" ry="11"/><ellipse cx="11" cy="34" rx="6" ry="8"/></g></svg>';
-let idleT = null, stepT = null, cur = { x: innerWidth / 2, y: innerHeight / 2 };
-function clearFoot() { clearInterval(stepT); stepT = null; document.querySelectorAll('.foot').forEach(f => f.remove()); }
+let idleT = null, stepT = null, idleScare = null, chaseT = null, cur = { x: innerWidth / 2, y: innerHeight / 2 };
+function clearFoot() { clearInterval(stepT); stepT = null; clearTimeout(idleScare); document.querySelectorAll('.foot').forEach(f => f.remove()); }
 function resetIdle() { clearFoot(); clearTimeout(idleT); idleT = setTimeout(startFoot, IDLE_MS); }
-function startFoot() {
-  if (S.busy || document.hidden || document.querySelector('.dim:not(.soft)')) return resetIdle();
+// 발자국이 화면 아래 구석에서 cur(커서/마지막 터치 위치)를 향해 걸어옴 → 도착 시 onArrive
+function walkFeet(ms, onArrive) {
   let p = { x: cur.x < innerWidth / 2 ? innerWidth - 30 : 30, y: innerHeight - 20 }, n = 0;
   stepT = setInterval(() => {
     const dx = cur.x - p.x, dy = cur.y - p.y, dist = Math.hypot(dx, dy);
-    if (dist < 50) { clearInterval(stepT); return; }
+    if (dist < 50) { clearInterval(stepT); stepT = null; onArrive && onArrive(); return; }
     const ux = dx / dist, uy = dy / dist, side = n++ % 2 ? 9 : -9;
     p = { x: p.x + ux * 46, y: p.y + uy * 46 };
     const f = document.createElement('div'); f.className = 'foot'; f.innerHTML = FOOT;
     f.style.left = (p.x - uy * side - 11) + 'px'; f.style.top = (p.y + ux * side - 22) + 'px';
     f.style.transform = 'rotate(' + (Math.atan2(uy, ux) * 180 / Math.PI + 90) + 'deg)';
-    document.body.appendChild(f); requestAnimationFrame(() => f.classList.add('on'));
+    document.body.appendChild(f); void f.offsetWidth; f.classList.add('on');
     const all = document.querySelectorAll('.foot'); if (all.length > 9) all[0].remove();
-  }, 950);
+  }, ms);
 }
+// 3분 무조작 → 발자국 접근 → 도착 후 5초 더 무조작이면 R-158
+function startFoot() {
+  if (S.busy || document.hidden || document.querySelector('.dim:not(.soft)')) { clearTimeout(idleT); idleT = setTimeout(startFoot, IDLE_MS); return; }
+  walkFeet(950, () => { idleScare = setTimeout(() => jump('R158', { pre: 800 }), 5000); });
+}
+// 민원 '젖은 발자국' 글: 5초 뒤 발자국이 커서를 쫓아옴(움직여도 따라옴) → 닿으면 R-158
+function armChase() {
+  chaseT = setTimeout(() => {
+    if (S.busy || S.chaseDone) return;
+    S.busy = true; S.chase = true; clearFoot();
+    walkFeet(420, () => { S.chase = false; S.chaseDone = true; jump('R158', { pre: 1000, chain: true }); });
+  }, 5000);
+}
+function stopChase() { clearTimeout(chaseT); if (S.chase) { S.chase = false; S.busy = false; clearFoot(); } }
 ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(ev => addEventListener(ev, e => {
   if (e.clientX != null) cur = { x: e.clientX, y: e.clientY };
+  if (S.chase) return;
   if (stepT || idleT) resetIdle();
 }, { passive: true }));
 
@@ -692,6 +712,29 @@ document.addEventListener('click', e => {
   if (p.dataset.pop === 'privacy') win({ title: '개인정보처리방침', body: '<div class="doc"><h3>개인정보처리방침</h3><ol><li>공단은 홈페이지 이용자의 개인정보를 수집하지 않습니다.</li><li>공단은 이용자의 접속 위치를 수집하지 않습니다. 단, 회수 업무 수행에 필요한 경우는 예외로 합니다.</li><li>수집된 정보는 보존 기간 경과 후 지체 없이 파기합니다. 보존 기간: ■■</li></ol></div>', foot: '<button class="bv" data-close>닫기</button>', fc: 'c' });
   else win({ title: '이메일무단수집거부', body: '본 웹사이트에 게시된 이메일 주소가 전자우편 수집 프로그램이나 그 밖의 기술적 장치를 이용하여 무단으로 수집되는 것을 거부하며, 이를 위반 시 관련 법률에 의해 처벌됨을 유념하시기 바랍니다.<br><br>게시일: 2003년 ■■월 ■■일', foot: '<button class="bv" data-close>닫기</button>', fc: 'c' });
 });
+
+/* ---------- 공터 사진 크게 보기 (수영장: 물 위로 발자국 → R-158) ---------- */
+const FOOT_W = FOOT.replace('rgba(38,58,70,.5)', 'rgba(8,40,50,.55)');
+const lbFoot = (x, y, w, r, on) => '<div class="lbf' + (on ? ' on' : '') + '" style="left:' + x + '%;top:' + y + '%;width:' + w + '%;transform:translate(-50%,-50%) rotate(' + r + 'deg)">' + FOOT_W + '</div>';
+const POOL_PATH = Array.from({ length: 9 }, (_, i) => { const e = Math.pow(i / 8, 1.5), sd = i % 2 ? 1 : -1; return [36 + 10 * e + sd * (0.6 + 1.8 * e), 60 + 37 * e, 1.1 + 5.5 * e, 180 + sd * 4]; });
+async function openPhoto(i) {
+  const g = GAL[i], d = win({ title: '사진 크게 보기 — ' + g[0], cls: 'wide', body: '<div class="lb"><img src="img/' + g[1] + '.webp" alt=""></div><p style="margin:6px 0 0;font-size:11px;color:#888">촬영 일시 불명 · 무단 복제를 금합니다.</p>', foot: '<button class="bv" data-close>닫기</button>', fc: 'c' });
+  const lb = d.querySelector('.lb');
+  if (i !== POOL) { if (Math.random() < 0.25) lb.insertAdjacentHTML('beforeend', lbFoot(40 + Math.random() * 20, 93, 4, 180, 1)); return; }
+  if (S.poolDone) { lb.insertAdjacentHTML('beforeend', POOL_PATH.map(p => lbFoot(p[0], p[1], p[2], p[3], 1)).join('')); return; }
+  if (S.busy) return;
+  S.busy = true; await wait(1800);
+  for (const p of POOL_PATH) {
+    if (!d.isConnected) { S.busy = false; return; }
+    lb.insertAdjacentHTML('beforeend', lbFoot(p[0], p[1], p[2], p[3]));
+    const el = lb.lastElementChild; void el.offsetWidth; el.classList.add('on');
+    await wait(650);
+  }
+  S.poolDone = true;
+  const cap = document.querySelector('[data-gal="' + POOL + '"] figcaption span'); if (cap) cap.textContent = '촬영 일시: 방금';
+  jump('R158', { pre: 1200, chain: true });
+}
+document.addEventListener('click', e => { const f = e.target.closest('[data-gal]'); if (f) openPhoto(+f.dataset.gal); });
 
 /* ---------- 페이지 ---------- */
 const H = (t, c) => '<div class="ph"><h2><i></i>' + t + '</h2><div class="crumb">HOME &gt; ' + (c || t) + '</div></div>';
@@ -794,7 +837,7 @@ const PAGES = {
       '<li>아래로 내려가는 계단의 수를 세지 마십시오.</li>' +
       '<li>본 수칙은 예고 없이 변경될 수 있습니다.</li></ol></div>' +
       '<h4 class="st">공터 사진 자료 (얕은 층 한정 공개)</h4><div class="gal">' +
-      GAL.map(g => '<figure>' + g[1] + '<!-- [제작자 교체] 공터 사진 --><figcaption>' + g[0] + '<span>촬영 일시 불명</span></figcaption></figure>').join('') + '</div>';
+      GAL.map((g, i) => '<figure data-gal="' + i + '"><img loading="lazy" src="img/' + g[1] + 's.webp" alt="' + g[0] + '"><figcaption>' + g[0] + '<span>' + (i === POOL && S.poolDone ? '촬영 일시: 방금' : '촬영 일시 불명') + '</span></figcaption></figure>').join('') + '</div><p style="margin-top:6px;font-size:11px;color:#888">※ 사진을 누르면 크게 볼 수 있습니다.</p>';
   },
   recruit() {
     const job = (title, rows, kw, link) => '<div class="job"><h5>' + title + ' <span class="new">NEW</span></h5>' +
@@ -816,7 +859,8 @@ const PAGES = {
       '<g stroke="#fff" stroke-width="16"><path d="M0 120H640M200 0V340M500 120V340"/></g><g stroke="#d4c890" stroke-width="2" fill="none"><path d="M0 120H640M200 0V340M500 120V340"/></g>' +
       '<text x="20" y="112" font-size="11" fill="#555">처리장로</text><circle cx="200" cy="120" r="14" fill="#fff" stroke="#2a7" stroke-width="4"/><text x="216" y="104" font-size="11" fill="#222">○○역 3번 출구</text>' +
       '<rect x="270" y="150" width="140" height="70" fill="#1F3A6E"/><text x="292" y="190" font-size="13" fill="#fff" font-weight="bold">제3처리장</text><path d="M340 140l7 14h-14z" fill="#d01818"/>' +
-      '<rect x="285" y="226" width="110" height="40" fill="none" stroke="#999" stroke-dasharray="4 3"/><text x="310" y="250" font-size="10" fill="#999">(지하)</text></svg></div>' +
+      '<rect x="285" y="226" width="110" height="40" fill="none" stroke="#999" stroke-dasharray="4 3"/><text x="310" y="250" font-size="10" fill="#999">(지하)</text>' +
+      [0, 1, 2, 3, 4, 5].map(i => '<g transform="translate(' + (336 - i * 9 + (i % 2 ? 5 : -5)) + ' ' + (278 + i * 11) + ') rotate(200)" fill="#55707a" opacity=".5"><ellipse rx="2.6" ry="3.6"/><ellipse cy="6" rx="2" ry="2.6"/></g>').join('') + '</svg></div>' +
       tbl(['구분', '안내'], [['주소', '(우)0■■■■ ○○시 ○○구 처리장로 3 한국하수이상관리공단 제3처리장'], ['대표전화', '0■■-■■■-0404 (평일 09:00~18:00)'], ['대중교통', '지하철 ○호선 ○○역 3번 출구 도보 7분 (환승 통로 내 안내 표지는 따르지 마십시오)'], ['주차', '방문객 주차 불가']].map(r => '<tr><th>' + r[0] + '</th><td class="l">' + r[1] + '</td></tr>').join('')) +
       '<p class="sq" style="margin-top:10px"><b class="st-red">※ 지하 시설은 일반 방문객 출입이 제한됩니다.</b></p>';
   }
@@ -848,6 +892,7 @@ function show(html, key) {
 }
 function route() {
   if (dishScroll) { removeEventListener('scroll', dishScroll); dishScroll = null; }
+  stopChase();
   const h = decodeURIComponent(location.hash.slice(1)) || 'main';
   const parts = h.split('/'), p = parts[0], arg = parts[1];
   let html = null, key = p;
@@ -858,6 +903,7 @@ function route() {
   if (html == null) return show404();
   S.err = 0; show(html, key);
   if (arg === 'dish') armDish();
+  if (arg === 'p6') armChase();
 }
 function show404() {
   show(err404(), '');
