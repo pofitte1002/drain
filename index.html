@@ -308,7 +308,7 @@ const SCARE_IMG = {
   R107: 'img/R107.webp'  // 수현 — 4번째 팝업 사진
 };
 // 이미지 초점(얼굴 위치, 가로% 세로%) — 화면 비율이 달라도 이 지점이 잘리지 않음 / 클로즈업 확대 중심
-const FOCUS = { R131: '57% 17%', R158: '50% 45%', R162: '48% 12%', R170: '50% 6%', R144: '50% 30%', R107: '50% 30%' };
+const FOCUS = { R131: '57% 17%', R158: '50% 45%', R162: '48% 12%', R170: '50% 6%', R144: '50% 17%', R107: '50% 30%' };
 // 효과음 파일 — URL을 넣으면 파일 재생, 비워두면 Web Audio 합성음
 const SFX_URL = {
   burst: '',   // [제작자 교체] 점프스퀘어 충격음
@@ -317,6 +317,7 @@ const SFX_URL = {
 };
 const MAX_VOL = 0.35;          // 효과음 음량 상한 (0~1)
 const IDLE_MS = 180000;        // 무조작 발자국 시작 시간 (3분)
+const DAWN_HOUR = 3;           // 이 시각(방문자 기기 기준 시)에 접속 중이면 새벽 방문 연출 — 테스트 시 현재 시로 바꿔볼 것
 const CARD = l => 'https://poft.uk/aab/' + l + '/00.webp';
 /* ========================================================= */
 
@@ -406,6 +407,7 @@ const mqExtra = [];
 function mqBuild() {
   const items = MQ.slice();
   if (Math.random() < 0.25) items[Math.floor(Math.random() * items.length)] = pick(MQ_ODD);
+  if (new Date().getHours() === DAWN_HOUR) items[1] = '지금 방문 점검을 실시합니다';
   $('#mqText').innerHTML = items.concat(mqExtra).map(esc).join('<em>◆</em>');
 }
 $('#mqText').addEventListener('animationiteration', mqBuild);
@@ -530,6 +532,19 @@ async function doBell() {
   jump('R144', { mode: 'peek', pre: 400, chain: true });
 }
 // 공터/아래: 끝없는 흰 공간 → R-131 클로즈업
+// 새벽 방문: 접속 중 DAWN_HOUR 시가 되면 15~35초 뒤 초인종 2회 → R-144 얼굴 클로즈업 (방문당 1회)
+let dawnDone = false;
+function dawnCheck() {
+  if (dawnDone || !S.ready || new Date().getHours() !== DAWN_HOUR) return;
+  dawnDone = true;
+  setTimeout(async () => {
+    if (S.busy || document.hidden) { dawnDone = false; return; } // 다음 체크에서 재시도
+    S.busy = true; hush(); await wait(1500);
+    sfx('bell'); await wait(3000);
+    jump('R144', { mode: 'close', pre: 600, chain: true });
+  }, 15000 + Math.random() * 20000);
+}
+setInterval(dawnCheck, 30000);
 async function doVoid() {
   if (S.busy) return;
   S.busy = true; document.body.classList.add('voiding');
@@ -647,6 +662,7 @@ function openWarning() {
     onClose: d => {
       S.scare = !d.querySelector('#scOff').checked; ls.set('scareOff', !S.scare);
       audioInit(); openNotice(); resetIdle();
+      S.ready = true; dawnCheck();
     }
   });
 }
